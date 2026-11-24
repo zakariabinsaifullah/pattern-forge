@@ -22,8 +22,10 @@ invalid, then fix it.
    checked directly. Add `--json` for machine-readable output, or `--theme <dir>` when the theme.json isn't in a
    parent folder. Exit code 1 means errors were found.
 
-2. **Explain the results** in plain terms, grouped by file: how many errors and warnings, and the handful of root
-   causes behind them (one bad attribute often produces several findings). Use `block-markup` →
+2. **Explain the results** in plain terms, grouped by file. Errors mean the editor rejects the block ("unexpected or
+   invalid content") or loads it with settings quietly lost; warnings mean it loads but gets rewritten on save,
+   carries classes that don't follow its settings, or uses hard-coded values instead of presets. Give the number of
+   errors and warnings, and the handful of root causes behind them (one bad attribute often produces several findings). Use `block-markup` →
    `references/common-mistakes.md` to explain each rule.
 
 3. **Fix, if the user asked for fixes** (or ask once if it's unclear). For each error:
@@ -42,3 +44,5 @@ invalid, then fix it.
 - Cover, media-text, gallery, table, embed and other complex core blocks get structure checks only.
 - The validator mirrors WordPress' own comparison rules for common core blocks but isn't the editor itself; for
   critical files suggest a final check in the editor (or WordPress Playground).
+- Shipped themes often reference presets their `theme.json` doesn't define (`unknown-preset`). The block still
+  loads but that style is missing; report it as a theme bug rather than a markup bug.

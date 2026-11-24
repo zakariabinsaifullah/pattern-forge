@@ -49,12 +49,20 @@ node scripts/pattern-forge.mjs tokens wp-content/themes/my-theme         # list 
 
 ## What the validator checks
 
+Errors are markup the editor rejects ("This block contains unexpected or invalid content") or loads with settings
+silently lost. Warnings are markup that loads but gets rewritten on save, classes that don't follow the block's
+settings, and hard-coded values that should be theme presets. The rules were checked against the real block editor
+on WordPress 6.8 and 7.1 using Twenty Twenty-Four, Twenty Twenty-Five and Ollie.
+
+
 - Block comment grammar: delimiters, JSON attributes, nesting and closers.
 - Wrapper element, base classes and single root element for common core blocks.
 - Classes and inline styles derived from attributes (colors, font sizes, alignment, spacing, typography, borders,
-  dimensions), in both directions: missing and orphaned.
+  dimensions): missing ones (error) and orphaned ones (warning).
 - Runtime-only classes saved by mistake (`is-layout-*`, `wp-container-*`).
 - Parent/child rules (`columns` → `column`, `buttons` → `button`, `list` → `list-item`).
+- Older markup that still loads but is rewritten on save (button font size on the wrapper, cover element order, raw
+  `<li>` lists, heading `align`).
 - Dynamic blocks saved with HTML, and static blocks saved self-closing.
 - Preset slugs that don't exist in the theme, plus warnings for hard-coded colors, spacing and font sizes.
 - Pattern headers (Title, Slug, Categories), duplicate slugs, text-domain mismatches, hot-linked images, and PHP

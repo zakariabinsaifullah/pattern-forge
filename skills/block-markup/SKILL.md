@@ -11,8 +11,18 @@ description: >
 # Writing valid WordPress block markup
 
 The block editor re-runs each block's `save()` on load and compares the result with the saved HTML.
-Any difference in tag, classes, inline styles or structure marks the block invalid. Write markup that
-exactly matches what `save()` produces for the given attributes.
+When they differ, one of three things happens:
+
+- **Invalid** — wrong wrapper tag, wrong heading level, extra root elements, HTML inside a dynamic block, or a
+  missing structural part: the editor shows "This block contains unexpected or invalid content".
+- **Silently changed** — a missing class or inline style that an attribute needs: an older block version
+  (deprecation) accepts the markup and the attribute is quietly dropped (for example padding, `aspectRatio`, a
+  `buttons` font size), or the content gets garbled.
+- **Absorbed** — an extra `has-*` or runtime class with no attribute behind it is moved into `className`. The block
+  loads, but the class no longer follows the block's settings.
+
+Only the first is visible to the user, so write markup that exactly matches what `save()` produces for the
+given attributes.
 
 ## The core rule
 
@@ -51,7 +61,7 @@ write the HTML those attributes produce — never style HTML directly.
 | `fontFamily:"x"` | `has-x-font-family` |
 | `borderColor:"x"` | `has-x-border-color has-border-color` |
 | `align:"wide"` (non-paragraph) | `alignwide` |
-| `textAlign:"center"` (heading, paragraph `align`) | `has-text-align-center` |
+| `textAlign:"center"` (heading; paragraph uses `align`) | `has-text-align-center` |
 | `className:"is-style-outline"` | that class, verbatim |
 | `style.spacing.padding.top:"var:preset\|spacing\|50"` | `style="padding-top:var(--wp--preset--spacing--50)"` |
 | `style.color.text:"#hex"` | `style="color:#hex"` + `has-text-color` |
@@ -75,7 +85,9 @@ link, image borders on the `<img>`, spacer height, column width) are in
    ```
    The script lives at `scripts/pattern-forge.mjs` in this plugin's root (two folders above this skill).
    To check markup that isn't saved yet, pipe it in: `... validate --stdin --kind pattern-php < draft.php`.
-   Fix every **error**; fix warnings unless there is a reason not to and say what it is.
+   Fix every **error** (the editor rejects the block or loses settings). Fix warnings too unless there is a reason
+   not to, and say what it is: they mark markup that loads but gets rewritten on save or doesn't follow the
+   block's settings.
 4. When a hook reports errors after a save, fix them immediately and save again.
 
 ## Scope

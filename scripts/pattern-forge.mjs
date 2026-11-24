@@ -79,7 +79,7 @@ const NO_OWN_HTML = new Set([
 const SPECS = {
   'core/paragraph': { tag: 'p', strict: true, textAlignAttr: 'align' },
   'core/heading': {
-    tag: (a) => `h${a.level ?? 2}`, cls: ['wp-block-heading'], strict: true,
+    tag: (a) => `h${a.level ?? 2}`, softCls: ['wp-block-heading'], strict: true,
     textAlignAttr: 'textAlign',
   },
   'core/group': { tag: (a) => a.tagName || 'div', cls: ['wp-block-group'], strict: true },
@@ -121,8 +121,9 @@ const SPECS = {
 };
 
 // Classes that WordPress derives from attributes. If one is in the markup
-// without the matching attribute, the editor regenerates the block without it
-// and reports "This block contains unexpected or invalid content".
+// without the matching attribute, the editor keeps the block valid by moving
+// the class into "className" — so it still renders, but it is no longer tied
+// to the attribute and the block's color/size/alignment controls won't show it.
 const DERIVED_CLASS = [
   /^has-[a-z0-9-]+-(background-color|border-color|font-size|font-family|gradient-background)$/,
   /^has-(background|text-color|link-color|border-color)$/,
@@ -337,9 +338,14 @@ function expectedFromAttrs(name, a, spec) {
   if (color.text) { sty.set('color', cssValue(color.text)); cls.add('has-text-color'); }
   if (isObj(s.elements?.link?.color) && Object.keys(s.elements.link.color).length) cls.add('has-link-color');
 
+  const t = isObj(s.typography) ? s.typography : {};
   const taAttr = spec.textAlignAttr;
   if (taAttr && a[taAttr]) cls.add(`has-text-align-${a[taAttr]}`);
-  if (a.align && taAttr !== 'align') cls.add(`align${a.align}`);
+  // WordPress 7.1+ stores text alignment as style.typography.textAlign; it saves a class, not an inline style.
+  if (t.textAlign) cls.add(`has-text-align-${t.textAlign}`);
+  // Legacy headings used "align" for text alignment; a deprecation still loads them.
+  if (name === 'core/heading' && ['left', 'center', 'right'].includes(a.align)) cls.add(`has-text-align-${a.align}`);
+  else if (a.align && taAttr !== 'align') cls.add(`align${a.align}`);
 
   if (typeof a.className === 'string') a.className.split(/\s+/).filter(Boolean).forEach((c) => cls.add(c));
 
@@ -347,9 +353,8 @@ function expectedFromAttrs(name, a, spec) {
   if (spacing.padding !== undefined) boxStyles('padding', spacing.padding, sty);
   if (spacing.margin !== undefined) boxStyles('margin', spacing.margin, sty);
 
-  const t = isObj(s.typography) ? s.typography : {};
   for (const [k, v] of Object.entries(t)) {
-    if (v === undefined || v === '' || isObj(v)) continue;
+    if (v === undefined || v === '' || isObj(v) || k === 'textAlign') continue;
     sty.set(kebab(k), cssValue(v));
   }
 
@@ -381,11 +386,15 @@ function expectedFromAttrs(name, a, spec) {
       if (a.width) sty.set('flex-basis', cssValue(a.width));
       break;
     case 'core/spacer': {
+      // Inside a flex parent, "fit"/"fill" sizing replaces the fixed height and width.
+      const stretch = isObj(s.layout) ? s.layout.selfStretch : undefined;
+      if (stretch === 'fit' || stretch === 'fill') break;
       const h = a.height ?? '100px';
       sty.set('height', typeof h === 'number' ? `${h}px` : cssValue(h));
       if (a.width) sty.set('width', typeof a.width === 'number' ? `${a.width}px` : cssValue(a.width));
       break;
     }
+    case 'core/buttons':
     case 'core/button':
       if (a.width) { cls.add('has-custom-width'); cls.add(`wp-block-button__width-${a.width}`); }
       if (a.fontSize || t.fontSize) cls.add('has-custom-font-size');
@@ -519,11 +528,13 @@ function hardcodedWarnings(blk, theme, report) {
     }
   }
   if (theme.themeHasSpacing) {
+    // Zero is a reset, not a design value; there is no preset for it.
+    const isRawSpacing = (x) => isRaw(x) && !/^0(px|r?em|%|vh|vw)?$/.test(x.trim());
     const vals = [];
     for (const k of ['padding', 'margin']) {
       const v = s.spacing?.[k];
-      if (isObj(v)) Object.values(v).forEach((x) => isRaw(x) && vals.push(x));
-      else if (isRaw(v)) vals.push(v);
+      if (isObj(v)) Object.values(v).forEach((x) => isRawSpacing(x) && vals.push(x));
+      else if (isRawSpacing(v)) vals.push(v);
     }
     if (vals.length) {
       report('warning', blk.start, 'hardcoded-spacing',
@@ -559,18 +570,19 @@ function checkBlock(src, blk, ctx) {
   const allClasses = typeof a.className === 'string' ? a.className.split(/\s+/) : [];
   for (const c of allClasses) {
     if (RUNTIME_CLASS.test(c)) {
-      report('error', blk.start, 'runtime-class', `${name}: className contains "${c}", which WordPress adds at render time. Remove it.`);
+      report('warning', blk.start, 'runtime-class', `${name}: className contains "${c}", which WordPress adds at render time. Saved, it sticks to the block permanently and can clash with the generated layout styles. Remove it.`);
     }
   }
 
+  // The editor loads blocks in the wrong place, but its inserter and drag-and-drop won't let users recreate or move them.
   const spec = SPECS[name];
   if (spec?.parent && blk.parent?.name !== spec.parent) {
-    report('error', blk.start, 'wrong-parent', `${name} must be placed directly inside ${spec.parent}.`);
+    report('warning', blk.start, 'wrong-parent', `${name} should sit directly inside ${spec.parent}; the editor loads it, but users can't add or move blocks like it there.`);
   }
   if (['core/columns', 'core/buttons', 'core/list'].includes(name)) {
     const allowed = { 'core/columns': 'core/column', 'core/buttons': 'core/button', 'core/list': 'core/list-item' }[name];
     for (const c of blk.children) {
-      if (c.name !== allowed) report('error', c.start, 'wrong-child', `${name} may only contain ${allowed} blocks, found ${c.name}.`);
+      if (c.name !== allowed) report('warning', c.start, 'wrong-child', `${name} should only contain ${allowed} blocks, found ${c.name}; the editor loads it, but users can't add or move blocks like it there.`);
     }
   }
 
@@ -646,9 +658,14 @@ function checkBlock(src, blk, ctx) {
     if (!first.classes.has(c)) report('warning', first.start, 'missing-class', `${name}: wrapper is missing class "${c}" (current WordPress saves it; older markup still loads through a deprecation).`);
   }
   for (const c of first.classes) {
-    if (RUNTIME_CLASS.test(c)) {
-      report('error', first.start, 'runtime-class', `${name}: class "${c}" is added by WordPress at render time and must not be saved.`);
+    if (RUNTIME_CLASS.test(c) && !allClasses.includes(c)) {
+      report('warning', first.start, 'runtime-class', `${name}: class "${c}" is added by WordPress at render time. Saved, it sticks to the block permanently and can clash with the generated layout styles. Remove it.`);
     }
+  }
+
+  if (name === 'core/list' && !blk.children.length && tokens.some((t) => !t.close && t.tag === 'li')) {
+    report('warning', first.start, 'legacy-list',
+      'core/list: items are raw <li> elements. Current WordPress stores each item as a <!-- wp:list-item --> block and converts this older format on load.');
   }
 
   if (spec.lenient) {
@@ -656,8 +673,13 @@ function checkBlock(src, blk, ctx) {
       if (!tokens.some((t) => t.classes.has('wp-block-cover__inner-container'))) {
         report('error', first.start, 'cover-structure', 'core/cover: missing <div class="wp-block-cover__inner-container">.');
       }
-      if (!tokens.some((t) => t.classes.has('wp-block-cover__background'))) {
+      const overlay = tokens.findIndex((t) => t.classes.has('wp-block-cover__background'));
+      const image = tokens.findIndex((t) => t.classes.has('wp-block-cover__image-background') || t.classes.has('wp-block-cover__video-background'));
+      if (overlay === -1) {
         report('warning', first.start, 'cover-structure', 'core/cover: missing <span aria-hidden="true" class="wp-block-cover__background …"> overlay.');
+      } else if (image > overlay) {
+        report('warning', tokens[overlay].start, 'cover-structure',
+          'core/cover: WordPress saves the background <img>/<video> before the overlay <span>. This order still loads through a deprecation, but the editor rewrites it on save.');
       }
     }
     return;
@@ -680,22 +702,37 @@ function checkBlock(src, blk, ctx) {
   const haveCls = new Set(targets.flatMap((t) => [...t.classes]));
   const haveSty = new Map(targets.flatMap((t) => [...t.style]));
 
+  if (name === 'core/heading' && ['left', 'center', 'right'].includes(a.align)) {
+    report('warning', blk.start, 'legacy-attribute',
+      `core/heading: "align":"${a.align}" is the old way to align heading text. It still loads, but WordPress converts it on save; use "textAlign":"${a.align}".`);
+  }
+  // Since WordPress 6.x the button's font-size classes are saved on the link, not the wrapper.
+  if (name === 'core/button' && targets.length > 1) {
+    const misplaced = [...first.classes].filter((c) => c === 'has-custom-font-size' || /^has-[a-z0-9-]+-font-size$/.test(c));
+    if (misplaced.length) {
+      report('warning', first.start, 'class-placement',
+        `core/button: ${misplaced.map((c) => `"${c}"`).join(' and ')} belong on the <a class="wp-block-button__link">, not the wrapper <div>. The old placement still loads, but WordPress rewrites it on save.`);
+    }
+  }
+
+  // A missing class or style means WordPress either rejects the block ("unexpected or invalid content") or
+  // recovers it through a deprecation that silently drops the attribute.
   for (const c of expCls) {
-    if (!haveCls.has(c)) report('error', first.start, 'missing-class', `${name}: attributes require class "${c}" but the HTML doesn't have it.`);
+    if (!haveCls.has(c)) report('error', first.start, 'missing-class', `${name}: attributes require class "${c}" but the HTML doesn't have it. WordPress will flag the block as invalid or drop the attribute.`);
   }
   const baseCls = new Set([...(spec.cls || []), ...(spec.softCls || [])]);
   for (const c of haveCls) {
     if (expCls.has(c) || baseCls.has(c)) continue;
     if (DERIVED_CLASS.some((re) => re.test(c))) {
-      report('error', first.start, 'orphan-class',
-        `${name}: class "${c}" has no matching block attribute. WordPress will strip it and flag the block as invalid — add the attribute or remove the class.`);
+      report('warning', first.start, 'orphan-class',
+        `${name}: class "${c}" has no matching block attribute. The editor keeps it as a custom class, so it renders but the block's settings won't show or change it. Add the attribute, or remove the class.`);
     }
   }
   for (const [prop, val] of expSty) {
     if (!haveSty.has(prop)) {
-      report('error', first.start, 'missing-style', `${name}: attributes require inline style "${prop}:${val}".`);
+      report('error', first.start, 'missing-style', `${name}: attributes require inline style "${prop}:${val}". WordPress will flag the block as invalid or drop the attribute.`);
     } else if (haveSty.get(prop).replace(/\s+/g, '') !== val.replace(/\s+/g, '')) {
-      report('error', first.start, 'style-mismatch', `${name}: inline "${prop}" is "${haveSty.get(prop)}" but attributes produce "${val}".`);
+      report('error', first.start, 'style-mismatch', `${name}: inline "${prop}" is "${haveSty.get(prop)}" but attributes produce "${val}". WordPress will flag the block as invalid or garble it while recovering.`);
     }
   }
   if (spec.strict) {
@@ -775,17 +812,49 @@ function checkHeader(header, file, ctx) {
   }
 }
 
+/** Top-level arguments of the call whose "(" is at `open`, respecting quotes and nesting. */
+function callArgs(code, open) {
+  const args = [];
+  let depth = 0, cur = '', quote = null;
+  for (let i = open; i < code.length; i++) {
+    const ch = code[i];
+    if (quote) {
+      cur += ch;
+      if (ch === '\\') { cur += code[++i] ?? ''; continue; }
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") { quote = ch; cur += ch; continue; }
+    if (ch === '(' || ch === '[') { if (depth++ > 0) cur += ch; continue; }
+    if (ch === ')' || ch === ']') {
+      if (--depth === 0) { args.push(cur.trim()); return args; }
+      cur += ch; continue;
+    }
+    if (ch === ',' && depth === 1) { args.push(cur.trim()); cur = ''; continue; }
+    cur += ch;
+  }
+  return null;
+}
+
+// Position of the text domain argument for each translation function.
+const I18N_DOMAIN_ARG = {
+  __: 1, _e: 1, esc_html__: 1, esc_html_e: 1, esc_attr__: 1, esc_attr_e: 1,
+  _x: 2, _ex: 2, esc_html_x: 2, esc_attr_x: 2, _n: 3, _nx: 4,
+};
+
 function checkI18n(php, ctx) {
   const domain = ctx.theme?.textDomain;
   if (!domain) return;
-  const re = /\b(?:esc_html_e|esc_html__|esc_attr_e|esc_attr__|_e|__|_x|_ex|esc_html_x|esc_attr_x)\s*\(([\s\S]*?)\)\s*;?\s*\?>/;
+  const re = /\b(esc_html_e|esc_html__|esc_attr_e|esc_attr__|esc_html_x|esc_attr_x|_nx|_ex|_e|__|_x|_n)\s*\(/g;
   for (const p of php) {
-    const m = p.code.match(re);
-    if (!m) continue;
-    const literals = [...m[1].matchAll(/(['"])((?:\\.|(?!\1).)*)\1/g)].map((x) => x[2]);
-    const d = literals[literals.length - 1];
-    if (literals.length >= 2 && d !== domain) {
-      ctx.report('warning', p.off, 'text-domain', `Translation call uses text domain "${d}" but the theme's is "${domain}".`);
+    let m;
+    while ((m = re.exec(p.code))) {
+      const args = callArgs(p.code, m.index + m[0].length - 1);
+      const arg = args?.[I18N_DOMAIN_ARG[m[1]]];
+      const lit = arg?.match(/^(['"])((?:\\.|(?!\1).)*)\1$/);
+      if (lit && lit[2] !== domain) {
+        ctx.report('warning', p.off, 'text-domain', `${m[1]}() uses text domain "${lit[2]}" but the theme's is "${domain}".`);
+      }
     }
   }
 }
@@ -802,7 +871,14 @@ function classify(file) {
 export function validateSource(raw, { file = '<stdin>', kind = 'markup', theme = null, seenSlugs = new Map() } = {}) {
   const findings = [];
   const lineOf = lineIndex(raw);
-  const report = (severity, pos, rule, message) => findings.push({ severity, line: lineOf(pos), rule, message });
+  const seen = new Set();
+  const report = (severity, pos, rule, message) => {
+    const line = lineOf(pos);
+    const key = `${line}\0${rule}\0${message}`;
+    if (seen.has(key)) return; // e.g. the same unknown preset used for top and bottom padding
+    seen.add(key);
+    findings.push({ severity, line, rule, message });
+  };
   const { src, header, php } = prepareSource(raw, kind, report);
   const ctx = { report, theme, lineOf, seenSlugs, stats: { blocks: 0, thirdParty: new Set() } };
 
@@ -968,7 +1044,7 @@ function cmdHook() {
   const { text } = formatResults([res]);
   process.stdout.write(JSON.stringify({
     decision: 'block',
-    reason: `Pattern Forge found block markup that WordPress will flag as invalid in ${path.basename(file)}. Fix these and save again:\n${text}`,
+    reason: `Pattern Forge found block markup in ${path.basename(file)} that the editor will reject as invalid or load with lost settings. Fix these and save again:\n${text}`,
   }));
   return 0;
 }

@@ -46,20 +46,24 @@ Preset value in `style`: `"var:preset|color|primary"` → `var(--wp--preset--col
 
 - `align:"wide" | "full" | "left" | "right" | "center"` → `alignwide` etc. on the wrapper (not on paragraph).
 - Heading `textAlign` and paragraph `align` → `has-text-align-left|center|right`.
+- WordPress 7.1 stores text alignment as `style.typography.textAlign`: it also saves `has-text-align-*` and no inline
+  `text-align`. Write `textAlign` / paragraph `align` for markup that must load on 6.x; 7.1 converts it.
+- Heading `align:"left|center|right"` is a legacy text-alignment form; it loads, but use `textAlign`.
 
 ## Block-specific placement
 
 | Block | Where supports serialize |
 | --- | --- |
-| `core/button` | Colors, gradient, padding, border, shadow → the `<a class="wp-block-button__link …">`. `className`, `width`, font size (`has-custom-font-size has-x-font-size`) → wrapper `<div>`. |
+| `core/button` | Colors, gradient, padding, border, shadow and font size (`has-x-font-size has-custom-font-size`) → the `<a class="wp-block-button__link …">`. `className` and `width` (`has-custom-width wp-block-button__width-N`) → wrapper `<div>`. |
+| `core/buttons` | `fontSize:"x"` → `has-custom-font-size has-x-font-size` on the wrapper. |
 | `core/image` | `sizeSlug` → `size-x`, `align`, `className`, `has-custom-border` (when any border is set), `is-resized` (when width/height) → `<figure>`. Border styles, `width`, `height`, `aspect-ratio`, `object-fit`, `wp-image-<id>` → `<img>`. |
 | `core/column` | `width:"40%"` → `flex-basis:40%`. `verticalAlignment` → `is-vertically-aligned-x`. |
 | `core/columns` | `verticalAlignment` → `are-vertically-aligned-x`; `isStackedOnMobile:false` → `is-not-stacked-on-mobile`. |
-| `core/spacer` | `height` (default `"100px"`) → `height:…`; numbers become `px`. |
+| `core/spacer` | `height` (default `"100px"`) → `height:…`; numbers become `px`. With `style.layout.selfStretch` `"fit"` or `"fill"` no height or width is saved. |
 | `core/group` | `tagName` sets the wrapper element. Layout is JSON only. |
 | `core/list` | `ordered:true` → `<ol>`. Class `wp-block-list`. |
 | `core/separator` | `backgroundColor` → `has-x-background-color has-background` **and** `has-x-color has-text-color` on the `<hr>`; default class `has-alpha-channel-opacity`. |
-| `core/cover` | Overlay color goes on the `<span class="wp-block-cover__background">`, not the wrapper. `minHeight` + `minHeightUnit` → wrapper `min-height`. |
+| `core/cover` | Children in order: background `<img>`/`<video>`, then the overlay `<span class="wp-block-cover__background">`, then the inner container. Overlay color goes on the `<span>`, not the wrapper. `minHeight` + `minHeightUnit` → wrapper `min-height`. |
 
 ## Dynamic blocks
 

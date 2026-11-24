@@ -63,7 +63,10 @@ pattern made of core blocks. Load the `block-markup` and `theme-tokens` skills f
 
 7. **Hand off.** Give the user: the file path, the outline of blocks used, the preset mapping, anything that
    couldn't be matched exactly (custom fonts, effects core blocks can't do, such as complex animations or overlapping
-   elements), and placeholder images to replace. Suggest opening the pattern once in the editor to confirm.
+   elements), and placeholder images to replace. Suggest opening the pattern once in the editor to confirm. WordPress 6.6+ caches the list of a theme's
+   pattern files, so a new file may not show in the inserter yet: tell the user to set
+   `define( 'WP_DEVELOPMENT_MODE', 'theme' );` in `wp-config.php` while developing, or to clear the cache with
+   `wp transient delete --all --network` (or bump the theme's `Version` in `style.css`).
 
 ## Fidelity rules
 

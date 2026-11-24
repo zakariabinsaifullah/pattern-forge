@@ -1,4 +1,4 @@
-# Canonical core block markup (WordPress 6.5+)
+# Canonical core block markup (WordPress 6.5+, checked against 6.8 and 7.1)
 
 Copy these shapes exactly. Replace the attributes, then regenerate the classes and styles from them
 following `serialization-rules.md`. Blank lines between sibling blocks are optional but conventional.
@@ -27,7 +27,10 @@ Paragraph text alignment uses the `align` attribute (not `textAlign`) and maps t
 <h1 class="wp-block-heading has-text-align-center has-x-large-font-size">Title</h1>
 <!-- /wp:heading -->
 ```
-The tag must match `level` (omitted = 2). `wp-block-heading` is always present.
+The tag must match `level` (omitted = 2). `wp-block-heading` is always present. Use `textAlign` for alignment: it
+loads everywhere. WordPress 7.1 converts it to `style.typography.textAlign` (same class, no inline style) on save;
+that newer form is not understood by 6.x, so don't write it unless the site runs 7.1+. Never use `align` for
+heading text alignment — that is a legacy form.
 
 ### List
 ```html
@@ -91,7 +94,8 @@ second `wp:list` inside an `<li>` for sub-lists.
 <hr class="wp-block-separator has-alpha-channel-opacity"/>
 <!-- /wp:separator -->
 ```
-Spacer without `height` saves `height:100px`. Prefer group padding or `blockGap` to spacers.
+Spacer without `height` saves `height:100px`. Inside a flex group, `"style":{"layout":{"selfStretch":"fit"}}`
+(or `"fill"`) replaces the fixed size and the spacer saves no `height`. Prefer group padding or `blockGap` to spacers.
 
 ## Actions
 
@@ -104,11 +108,21 @@ Spacer without `height` saves `height:100px`. Prefer group padding or `blockGap`
 
 <!-- wp:button {"className":"is-style-outline"} -->
 <div class="wp-block-button is-style-outline"><a class="wp-block-button__link wp-element-button" href="#">Secondary</a></div>
+<!-- /wp:button -->
+
+<!-- wp:button {"width":50,"fontSize":"small"} -->
+<div class="wp-block-button has-custom-width wp-block-button__width-50"><a class="wp-block-button__link has-small-font-size has-custom-font-size wp-element-button" href="#">Wide, small text</a></div>
 <!-- /wp:button --></div>
 <!-- /wp:buttons -->
+
+<!-- wp:buttons {"fontSize":"medium"} -->
+<div class="wp-block-buttons has-custom-font-size has-medium-font-size"><!-- inner button blocks --></div>
+<!-- /wp:buttons -->
 ```
-Colors, padding and border go on the `<a>`; `className`, `width` (`has-custom-width wp-block-button__width-50`)
-and font size (`has-custom-font-size has-small-font-size`) go on the wrapper `<div>`.
+On `button`: colors, padding, border **and font size** (`has-x-font-size has-custom-font-size`) go on the `<a>`;
+`className` and `width` (`has-custom-width wp-block-button__width-50`) go on the wrapper `<div>`.
+On `buttons`: a `fontSize` saves `has-custom-font-size has-x-font-size` on the wrapper — without
+`has-custom-font-size` WordPress silently drops the font size.
 
 ## Media
 
@@ -123,15 +137,17 @@ and font size (`has-custom-font-size has-small-font-size`) go on the wrapper `<d
 <!-- /wp:image -->
 ```
 Only include `id` when the image is a real Media Library attachment; theme patterns usually omit it.
+`aspectRatio` and `scale` must appear as `aspect-ratio:` and `object-fit:` on the `<img>` — without them WordPress
+loads the image but silently drops both attributes.
 `width`/`height` add `is-resized` to the figure and `width:`/`height:` to the `<img>` style.
 
 ### Cover (structure checked only — follow exactly)
 ```html
 <!-- wp:cover {"url":"photo.jpg","dimRatio":50,"overlayColor":"contrast","isUserOverlayColor":true,"minHeight":480,"minHeightUnit":"px","layout":{"type":"constrained"}} -->
-<div class="wp-block-cover" style="min-height:480px"><span aria-hidden="true" class="wp-block-cover__background has-contrast-background-color has-background-dim"></span><img class="wp-block-cover__image-background" alt="" src="photo.jpg" data-object-fit="cover"/><div class="wp-block-cover__inner-container"><!-- inner blocks --></div></div>
+<div class="wp-block-cover" style="min-height:480px"><img class="wp-block-cover__image-background" alt="" src="photo.jpg" data-object-fit="cover"/><span aria-hidden="true" class="wp-block-cover__background has-contrast-background-color has-background-dim"></span><div class="wp-block-cover__inner-container"><!-- inner blocks --></div></div>
 <!-- /wp:cover -->
 ```
-`dimRatio` 50 → `has-background-dim`; any other multiple of 10 → `has-background-dim-<n> has-background-dim`;
+The background `<img>` comes **before** the overlay `<span>`. `dimRatio` 50 → `has-background-dim`; any other multiple of 10 → `has-background-dim-<n> has-background-dim`;
 0 → `has-background-dim-0 has-background-dim`.
 
 ## Dynamic blocks (self-closing, no HTML)
