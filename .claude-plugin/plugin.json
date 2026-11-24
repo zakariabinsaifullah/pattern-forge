@@ -1,0 +1,25 @@
+{
+  "name": "pattern-forge",
+  "displayName": "Pattern Forge",
+  "version": "0.1.0",
+  "description": "Turn screenshots, mockups and page-builder sections into WordPress block patterns built from core blocks and your theme.json presets, with a built-in validator that catches \"invalid content\" errors before the editor does.",
+  "author": {
+    "name": "Zakaria Binsaifullah",
+    "url": "https://github.com/zakariabinsaifullah"
+  },
+  "homepage": "https://github.com/zakariabinsaifullah/pattern-forge",
+  "repository": "https://github.com/zakariabinsaifullah/pattern-forge",
+  "license": "MIT",
+  "icon": "./assets/icon.png",
+  "network": {
+    "hosts": []
+  },
+  "keywords": [
+    "wordpress",
+    "gutenberg",
+    "block-patterns",
+    "block-themes",
+    "full-site-editing",
+    "theme-json"
+  ]
+}

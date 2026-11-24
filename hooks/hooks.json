@@ -1,0 +1,17 @@
+{
+  "description": "After Claude writes or edits a block pattern, template or template part, validate its block markup locally and send any errors back to Claude to fix.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/pattern-forge.mjs\" hook",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
